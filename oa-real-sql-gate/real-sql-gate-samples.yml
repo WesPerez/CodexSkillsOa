@@ -1,0 +1,49 @@
+# OA 真实 SQL 门禁样例参数。
+# 这里只保留非敏感、可控的开发/测试数据。
+
+defaults:
+  rowLimit: 1
+
+samples:
+  com.nfrc.modules.commons.system.system.dao.SysCompanyDatabaseDao.selectAllList:
+    params: {}
+  com.nfrc.modules.commons.printplan.dyjhgl.dao.DyjhglDao.selectControlPermissions:
+    companyCode: "010"
+    params:
+      dyjhIds:
+        - "5966543147"
+        - "1456873003"
+      curUserId: "-99"
+      isAdmin: 1
+  com.nfrc.modules.commons.printplan.dyjhgl.dao.DyjhglDao.selectQrhDoneStatus:
+    companyCode: "010"
+    params:
+      dyjhIds:
+        - "5966543147"
+        - "1456873003"
+  com.nfrc.modules.commons.printplan.dyjhgl.dao.DyjhglDao.selectMsfmDoneStatus:
+    companyCode: "010"
+    params:
+      dyjhIds:
+        - "5966543147"
+        - "1456873003"
+  com.nfrc.modules.commons.printplan.dyjhgl.dao.DyjhglDao.selectKs008DoneStatus:
+    companyCode: "010"
+    params:
+      dyjhIds:
+        - "5966543147"
+        - "1456873003"
+  com.nfrc.modules.commons.printplan.dyjhgl.dao.DyjhglDao.selectMs002DoneStatus:
+    companyCode: "010"
+    params:
+      dyjhIds:
+        - "5966543147"
+        - "1456873003"
+  com.nfrc.modules.commons.printplan.dyjhgl.dao.DyjhglDao.selectKs033ByKjid:
+    companyCode: "010"
+    params:
+      kjid001: "7631"
+  com.nfrc.modules.commons.printplan.dyjhgl.dao.DyjhglDao.selectJjdList:
+    companyCode: "010"
+    params:
+      dyjh001: "1456873003"
