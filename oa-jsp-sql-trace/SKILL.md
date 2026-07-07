@@ -40,6 +40,18 @@ description: "老 OA JSP / Struts FRAME / Oracle SQL 证据链追踪技能。用
 - 如果本地导出或数据库不可用，输出精确待执行的只读 SQL 和缺失路径，让 `oa-business-logic-compare` 把该项标成未验证，而不是猜测一致性。
 - 不调用 `oa-real-sql-gate`；新 OA MyBatis/SQL 校验由业务对比技能转交给 SQL gate。
 
+## 1.3 老 OA 真实库与运行时快速路径
+
+老 OA 不是 MyBatis 项目；不要把 `oa-real-sql-gate` 当作老 OA 的数据库验证工具。遇到老 OA JSP、FRAME、函数、过程或运行目录问题时，按下面路径推进，避免在错误工具链上反复试错：
+
+1. 先定位当前老 OA 运行实例实际使用的数据源。优先读取该实例的 `WEB-INF/proxool.xml` 和运行目录 classpath，通过老 OA 同源 JDBC/Proxool 建连；不要凭连接名、IP、schema 名或导出文件里的 schema 猜库身份。
+2. 第一条 SQL 必须只读确认身份：`select user, sys_context('USERENV','CURRENT_SCHEMA'), sys_context('USERENV','DB_NAME') from dual`。未确认前按生产库处理；确认是开发/测试库后，才允许在用户授权范围内做受控 DDL/DML/编译。
+3. 老 OA Proxool/解密类依赖旧 JDK 行为。若 JDK 17 等新运行时出现 `sun.misc.BASE64Decoder`、驱动加载、连接池初始化或解密相关错误，立即切换到项目/IDEA 老 OA 使用的 JDK 8 和 `WEB-INF/classes`、`WEB-INF/lib/*` classpath；不要继续试无关 JDBC 工具或新 OA 脚本。
+4. 编译老 OA 函数/过程到开发库时，使用当前运行实例确认过的 schema。若本地导出 SQL 带旧 schema 或 `EDITIONABLE` 导致编译失败，先按目标开发 schema 做最小替换并去除不兼容关键字，再查 `USER_OBJECTS` / `USER_ERRORS` 验证 `VALID` 和错误为空。
+5. 新增或修改 JSP 入口后，除文件存在外还必须验证 FRAME 路由配置：使用 `GlobalUtil.encrypt("页面名")` 打开的页面，应确认运行库 `FRAME_PAGE` 有对应 `PAGE_NAME`、`PAGE_PATH`、有效标志，且 JSP 已同步到当前运行的 exploded artifact/部署目录。
+6. 浏览器点击只证明入口可触发，不证明闭环完成。点击后必须检查弹窗或 iframe 的可见正文、Network/console、服务器日志和必要的数据库读回；只要页面出现“服务器程序出现错误”、空白 iframe、跨 frame 加载失败或错误页，立即按 `oa-dev-verification-gate` 的 `browser-failure` 分支读取老 OA 运行控制台/日志和浏览器 Network/console，再回到 FRAME_PAGE/JSP 编译/参数传递/SQL 解析。不要只凭数据库探针猜原因，也不得继续宣称页面已连通。
+7. 对会写库的按钮、保存、确认、下载记录、状态流转，只在确认开发/测试库、样例可控、影响字段明确、读回/恢复方案明确且用户授权后执行；否则只验证到按钮可见、请求可达、SQL/过程源码和副作用清单。
+
 ## 2. 输入
 
 接受任一入口：

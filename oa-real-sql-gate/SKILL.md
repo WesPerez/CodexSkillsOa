@@ -15,6 +15,10 @@ description: 真实开发/测试数据库 SQL 门禁。用于修改 OA MyBatis X
 - 需要真实页面、接口、下载或副作用验收时，使用 `oa-real-browser-driver`。
 - 后端/Mapper 修复通过 SQL 门禁后，如仍需 IDEA/DevTools 重启和浏览器 Network/console 复验，使用 `oa-dev-verification-gate`。
 
+## 代码与样例边界
+
+本门禁只拥有 SQL 解析、真实库执行安全、样例和恢复证据。涉及 Mapper/DAO/Service 源码修复、暂存、提交、还原或清理时，遵守 `oa-business-logic-compare` 的“任务边界、提交边界与还原边界”。`-Mode changed` 只能用来发现需要校验的已变更 Mapper，不代表可以提交、还原或清理整批工作树差异；样例文件和报告也只有在用户明确要求交付时才提交。
+
 ## 可执行闭环原则
 
 本门禁应产出下一步可执行的数据库动作，而不是只给一个 `blocked` 标签。
@@ -35,7 +39,7 @@ description: 真实开发/测试数据库 SQL 门禁。用于修改 OA MyBatis X
 
 本门禁负责数据库执行安全和 SQL 证据。其他 OA 技能应把本报告视为数据库契约：
 
-- 输入：Mapper id 或 XML 路径、必要的 DAO/Service 上下文、companyCode/数据源预期、参数来源、样例 id、SQL 类型、预期影响表，以及调用方是否准备浏览器动作、后端重载或业务一致性检查。
+- 输入：Mapper id 或 XML 路径、必要的 DAO/Service 上下文、companyCode/数据源预期、参数来源、样例 id、SQL 类型、预期影响表、调用方提供的样例覆盖计划，以及调用方是否准备浏览器动作、后端重载或业务一致性检查。
 - 输出：报告路径、数据库身份/schema、选中数据源、生成的 `BoundSql`、参数集、对象元数据结果、执行/读回结果、副作用分类、DML 执行时的恢复证据、最终状态。
 - 返回状态值：`pass`、`needs-data`、`blocked-production-or-unknown-db`、`blocked-missing-authorization`、`blocked-unbounded-side-effect`、`blocked-missing-restore-verification`、`write-readback-restored`、`failed`。
 - SELECT 或安全 SQL 解析得到 `pass` 时，交回 `oa-business-logic-compare` 做一致性判断；如后端运行时需要重载，交给 `oa-dev-verification-gate`。
@@ -178,12 +182,37 @@ samples:
       - "real_test_row"
 ```
 
-样例选择规则：
+样例参数记录规则：
 
-- 优先选择一个能覆盖目标列表行、弹窗、下载、授权、完成和导出分支的代表性项目/账号。
-- 一个样例无法覆盖全部分支时，添加多个具名样例，并记录每个样例证明哪个分支。
+- 业务分支和浏览器覆盖范围由调用方提供；本门禁只记录样例参数、companyCode、数据源和该样例对应的调用方分支标签。
+- 只读发现候选数据时，可以记录它可能覆盖的分支，但不能据此宣布页面或业务闭环完成。
+- 一个样例无法满足调用方分支条件时，添加多个具名样例，并记录每个样例对应的分支标签。
 - 不要用编造 id 只为了生成 `BoundSql`。没有安全数据时，返回 `needs-data` 并写清需要的表/字段/样例。
 - 临时开发/测试权限更新必须包含原始行快照查询、update/insert、预期影响行数、读回查询、恢复语句、恢复验证查询。缺任一项，SQL gate 保持 `blocked`。
+
+## 测试数据构造策略
+
+本门禁是 OA 技能链中唯一负责“安全构造/调整测试数据并恢复”的技能。业务覆盖分支由 `oa-real-browser-driver` 或 `oa-business-logic-compare` 提供，本门禁只判断数据操作是否安全、可控、可恢复。
+
+1. 先找数，后造数：
+   - 用只读 SQL 按调用方覆盖计划、Mapper where/join、权限门、状态和日期范围寻找现有候选样例。
+   - 找不到覆盖分支的数据时，返回 `needs-data`，并列出缺少的分支条件。
+   - 只有在确认开发/测试库、当前任务已授权构造测试数据、且能写出完整恢复计划时，才进入造数/改数。
+2. 构造/调整数据前必须具备：
+   - 数据库身份：`USER`、`CURRENT_SCHEMA`、数据库名/服务标签。
+   - 覆盖计划：本次要证明的页面/控件/分支。
+   - 最小影响表和字段：从 Service/Mapper/过程追踪得出，不靠猜表名。
+   - 原始快照：更新/删除前能精确定位原行；插入新行时记录生成主键、关联键和清理条件。
+   - 执行 SQL、预期影响行数、读回 SQL、恢复 SQL、恢复验证 SQL。
+3. 构造方式：
+   - 优先修改一条可控 dev/test 行的最少字段，而不是大范围改角色、状态或日期。
+   - 需要插入 fixture 时，所有主表、明细表、日志/权限/附件关联都必须有可删除或可恢复的键；无法界定完整关联时保持 `blocked-unbounded-side-effect`。
+   - 不执行会提交审批流、打印完成、下载记录、库存/二维码状态、外部 deep link 状态或不可逆序列推进的过程，除非外层已有精确授权和恢复边界。
+4. 浏览器验收后：
+   - 除非用户明确要求保留测试状态，否则立即恢复或删除 fixture。
+   - 用恢复验证 SQL 证明回到原状态。
+   - 报告中列出样例覆盖了哪些分支，以及哪些分支仍然没有安全数据。
+5. 生产库或身份不明库永远不造数、不改数，只能输出只读诊断 SQL 或 `needs-data`。
 
 ## 报告模板
 

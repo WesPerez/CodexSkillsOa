@@ -1,6 +1,6 @@
 ---
 name: oa-dev-verification-gate
-description: 受控 OA 开发验证门禁。用于后端改动、IDEA Spring Boot 重启、Spring DevTools trigger-file 重载、Logback/IDEA 启动日志检查，以及真实 Edge 浏览器 Network/console 动作窗口证据。适用于 Java、Mapper XML、模板、配置或后端面对行为变化；真实点击/下载/保存/搜索失败；需要判断是否重启 IDEA 启动的后端；或其他 OA 技能在验收前需要浏览器请求/响应证据时。
+description: 受控 OA 开发验证门禁。用于后端改动、IDEA Spring Boot 重启、Spring DevTools trigger-file 重载、Logback/IDEA/Tomcat 控制台日志检查，以及真实 Edge 浏览器 Network/console 动作窗口证据。适用于 Java、Mapper XML、模板、配置或后端面对行为变化；页面报错、请求报错、接口信息核对、真实点击/下载/保存/搜索失败；需要判断是否重启 IDEA 启动的后端；或其他 OA 技能在验收前需要对应后端运行时日志和浏览器请求/响应证据时。
 ---
 
 # OA 开发验证门禁
@@ -11,13 +11,18 @@ description: 受控 OA 开发验证门禁。用于后端改动、IDEA Spring Boo
 
 - 后端重启是代码/SQL 预检之后的受控门禁，不是“保存文件就自动算生效”。
 - 通过官方 Edge/浏览器插件捕获真实动作证据：Network、console、toast/modal、截图、下载、后端日志和必要的数据库读回。
+- 页面报错、请求报错或接口信息核对时，先读取对应后端 IDEA/Tomcat/Spring 控制台或文件日志，再做数据库探针、源码推断或配置修复。
 - 证明重启后的后端健康，并且确实服务于当前要验收的代码路径。
 
 真实点击、延迟错误、生成下载、副作用分类或共享页面上下文保护，交给 `oa-real-action-evidence` 做详细动作窗口循环。
 
+## 代码与产物边界
+
+本门禁可能编译代码、更新 `target/classes`、触碰 `.reloadtrigger` 或读取日志，但这些运行时产物不等于可提交源码。涉及源码修复、暂存、提交、还原或清理时，遵守 `oa-business-logic-compare` 的“任务边界、提交边界与还原边界”；本门禁不得为了证明运行时新鲜而 stage `.idea`、`target`、日志、下载文件或证据报告，也不得还原归属不明的源码差异。
+
 ## 可执行闭环原则
 
-本门禁优先寻找可运行路径，而不是直接报告阻断。只有下面命令侧链路已尝试或有证据证明不适用后，才使用 `runtime-stale`、`restart-unproven` 或 Computer Use 兜底。
+本门禁优先寻找可运行路径，而不是直接报告阻断。凡是页面动作会发送到后端，且任务是在排查、验证或核对该请求/接口，第一优先级都是对应后端运行时日志；只有命令侧日志链路已尝试或有证据证明不适用后，才使用 `runtime-stale`、`restart-unproven` 或 Computer Use 兜底。
 
 本工作区已验证的命令侧链路：
 
@@ -32,10 +37,10 @@ description: 受控 OA 开发验证门禁。用于后端改动、IDEA Spring Boo
 
 ## 跨技能交接契约
 
-本门禁负责后端/运行时新鲜度，不代替 SQL gate 或浏览器动作证明：
+本门禁负责后端/运行时新鲜度和后端请求日志取证，不代替 SQL gate 或浏览器动作证明：
 
-- 输入：后端面对文件或重载原因、适用时的编译/SQL gate 结果、要复测的 endpoint/action、已知 8090/进程事实、调用方最后失败的 Network/log 症状。
-- 输出：运行时证据行，包含时间戳、编译/预检结果、8090 PID、父 IDEA PID、DevTools 参数状态、trigger 文件路径/时间、classpath 产物或编译输出、Logback 启动/失败行、探活 URL/body 判定和最终运行时状态。
+- 输入：后端面对文件或重载原因、适用时的编译/SQL gate 结果、要复测的 endpoint/action、请求 URL/method/status/timestamp、后端端口或系统线索、已知进程事实、调用方最后失败的 Network/log 症状。
+- 输出：运行时证据行，包含时间戳、编译/预检结果、后端 PID、父 IDEA/Tomcat/Spring 进程、DevTools/运行配置状态、trigger 文件路径/时间、classpath 产物或编译输出、Logback/Tomcat/IDEA console 启动/失败/请求日志行、探活 URL/body 判定和最终运行时状态。
 - 返回状态：`runtime-fresh`、`runtime-verified-api-only`、`runtime-stale`、`restart-unproven`、`compile-failed`、`sql-gate-required`、`probe-failed`、`computer-use-fallback-required`。
 - Mapper/SQL 改动且没有 SQL gate 报告时，返回 `sql-gate-required`，先调用或交给 `oa-real-sql-gate`，再重启。
 - 运行时为 `runtime-fresh` 时，把精确 action/API 交回 `oa-real-action-evidence` 或 `oa-real-browser-driver` 重跑。运行时新鲜不等于功能验收。
@@ -45,15 +50,45 @@ description: 受控 OA 开发验证门禁。用于后端改动、IDEA Spring Boo
 
 ## 门禁流程
 
+### 0. 后端请求日志优先门禁
+
+当真实页面动作、弹窗、下载、保存、搜索、列表加载或接口核对会发送后端请求时，先完成本门禁，再做数据库探针或源码结论：
+
+1. 从浏览器 Network 取请求 URL、method、status、payload 摘要和点击时间窗口；没有 Network 时先说明是前端 handler/禁用/校验问题。
+2. 识别对应后端，不凭记忆猜：新 OA 通常是 8090 Spring Boot；老 OA 通常是 9099 Tomcat/JSP；其他端口按 Network URL 和监听进程确认。
+3. 读取对应后端运行日志：
+   - 新 OA：IDEA 启动的 Spring Boot Logback 文件；确有保存 console 输出时可读 IDEA console 文件。
+   - 老 OA：IDEA/Tomcat console 保存文件、Tomcat `catalina.base` 下日志；无文件时用 Computer Use 只读查看可见 IDEA/Tomcat 控制台。
+   - 其他后端：先用监听端口、进程命令行、父进程和 run configuration 确认日志来源。
+4. 日志窗口必须覆盖本次请求时间；至少搜索请求路径、业务主键、异常关键词、SQL/ORA、JSP/Servlet、Controller/Mapper/方法名。
+5. 只有拿到后端日志证据，或证明当前日志通道不可达并记录兜底尝试后，才进入 DB 元数据/FRAME_PAGE/Mapper/配置探针。
+6. `codex_app.read_thread_terminal` 不是 IDEA/Tomcat/Spring 控制台，除非本线程明确运行了对应后端进程；不能用它替代后端日志。
+
 ### 1. 分类动作
 
 - `frontend-only`：Vue/CSS/下载处理，不需要后端重启。
 - `backend-code`：Java、Service、Controller、模板或配置改动，需要编译和后端重载。
 - `mapper-sql`：MyBatis XML、DAO、SQL 或数据库面对代码。任何重启结论前先读并执行 `oa-real-sql-gate`。
-- `browser-failure`：点击后出现用户可见失败。猜测前先捕获 Network/console 证据。
+- `backend-request-check`：任何页面请求、接口信息核对、列表加载、搜索、下载、保存、弹窗打开后需要验证或排查后端行为。第一步执行“后端请求日志优先门禁”。
+- `browser-failure`：点击后出现用户可见失败。猜测前先捕获 Network/console 证据，并读取对应后端 IDEA/Tomcat/Spring 控制台或文件日志。
+- `old-oa-jsp-failure`：老 OA 9099/JSP/FRAME 点击后出现“服务器程序出现错误”、空白 iframe、JSP 编译错误或 Struts forward 错误。第一动作是读取老 OA 运行控制台/日志和浏览器 Network/console，然后才查 FRAME_PAGE、JSP 同步、Oracle SQL/函数。
 - `unknown-side-effect`：副作用和恢复计划未知前不要执行。
 
 用户明确要求先解决 IDEA 重启或日志读取时，暂停无关业务验证，先完成本门禁。运行时重载路径未证明前，不要漂移到页面修复。
+
+### 1.1 老 OA 9099/JSP 错误页快速路径
+
+老 OA 与新 OA Spring Boot 门禁分开处理。遇到老 OA `localhost:9099`、`cpzx-oa`、JSP/FRAME、Struts `forwardName` 或 Phr 弹窗错误页时：
+
+1. 不调用 `oa-real-sql-gate`；它只验证新 OA MyBatis。
+2. 不把 `codex_app.read_thread_terminal` 当作 IDEA/Tomcat 老 OA 控制台。该工具只读当前 Codex 线程 terminal；除非本线程明确挂接了老 OA 运行控制台，否则结果为“不适用”。
+3. 先找真实运行通道：
+   - 若 IDEA/Tomcat console 保存到了文件，读取保存文件并验证 `LastWriteTime` 晚于本次点击。
+   - 若没有保存文件，用 Computer Use 兜底读取可见 IDEA/Tomcat 控制台，只读观察，不点击 Stop/Rerun/Debug/Run。
+   - 同时用官方 Edge 插件读取弹窗/iframe 的 Network、console、URL、状态码和页面文本。
+4. 控制台/日志要优先搜索：`Exception`、`JasperException`、`ServletException`、`SQLException`、`ORA-`、`NoSuchMethodError`、`ClassNotFoundException`、`NullPointerException`、`forwardName`、`FRAME_PAGE`、目标 JSP 文件名和业务主键。
+5. 只有拿到运行时错误线索，或证明控制台/日志当前不可达后，才转到数据库只读探针检查 `FRAME_PAGE`、表字段、函数状态和 SQL 解析。
+6. 如果数据库探针先发现明确缺口，也必须回到浏览器/控制台复验错误页是否消失；不能把 `FRAME_PAGE` 补齐读回当作页面验收。
 
 ### 2. 重启前预检
 
@@ -162,13 +197,14 @@ Computer Use 仅为最后兜底：当文件/进程证据缺失或矛盾，或用
 
 | 项 | 内容 |
 |---|---|
-| 分类 | `frontend-only` / `backend-code` / `mapper-sql` / `browser-failure` / `unknown-side-effect` |
+| 分类 | `frontend-only` / `backend-code` / `mapper-sql` / `backend-request-check` / `browser-failure` / `old-oa-jsp-failure` / `unknown-side-effect` |
 | 编译/预检 | 命令、结果、失败摘要 |
 | SQL gate | 报告路径和状态，如适用 |
-| 进程 | 8090 PID、父 IDEA PID、main class、classpath |
+| 进程 | 实际后端端口 PID（新 OA 通常 8090、老 OA 通常 9099）、父 IDEA/Tomcat/Spring PID、main class、classpath 或 catalina.base |
 | DevTools | `spring.devtools.restart.enabled`、`.reloadtrigger` |
 | Trigger | 文件路径和时间戳 |
 | Logback | 日志路径、新鲜 startup/failure 行 |
+| 对应后端请求日志 | URL/method/status/timestamp、日志通道、命中日志行或不可达证明 |
 | 探活 | URL、状态、body 判定 |
 | 重跑动作 | Edge tab、请求、可见消息、文件/DB 证据 |
 | 最终状态 | `runtime-fresh` 等精确标签 |
@@ -189,6 +225,7 @@ Computer Use 仅为最后兜底：当文件/进程证据缺失或矛盾，或用
 - 后端面对变更已编译或明确不需要编译。
 - Mapper/SQL 变更已有 SQL gate 结论。
 - 需要重载时，DevTools/重启证据新鲜且可审计。
+- 页面/接口动作涉及后端请求时，已读取对应后端 IDEA/Tomcat/Spring 控制台或文件日志，或明确证明日志通道不可达并说明兜底尝试。
 - 8090 探活成功，且无启动失败。
 - 原真实 Edge 动作已重跑，或明确交回下一步动作证据技能。
 - 所有未完成项都有精确阻断原因和下一步。
