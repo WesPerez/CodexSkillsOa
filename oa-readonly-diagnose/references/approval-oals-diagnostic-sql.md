@@ -1,11 +1,24 @@
-# 生产只读诊断 SQL 模板
+# 老 OA 审批 OALS 只读诊断 SQL 参考
 
-以下 SQL 面向 Oracle 老 OA。执行前替换：
+以下 SQL 面向 Oracle 老 OA。它是 `oa-readonly-diagnose` 生成最终 SQL 包时的素材，不要求每次全部输出；优先按用户给出的业务类型、主键、流水压缩成一次执行脚本。
+
+执行前替换：
 
 - `:YWLX`：业务类型，如 `140`
 - `:PK`：业务主键，如 `KS069.FJID001`
 - `:CURR_OALS`：业务表当前流水，可先为空，查出后再替换
-- `:OLD_OALS`：怀疑旧流水，可为空，查出后再替换
+
+## 0. 库身份
+
+任何发给用户执行的 OALS 诊断 SQL 包，都必须把库身份放在第一组结果，便于确认结果来自目标库和目标 schema。
+
+```sql
+SELECT '00_DB_ID' tag,
+       USER AS db_user,
+       SYS_CONTEXT('USERENV','CURRENT_SCHEMA') AS current_schema,
+       SYS_CONTEXT('USERENV','DB_NAME') AS db_name
+  FROM dual;
+```
 
 ## 1. 对象和配置
 
@@ -200,11 +213,11 @@ SELECT '60_STATUS_COMPARE' tag,
 
 ## 本案证据摘要
 
-本案 `YWLX001=140`、`FJID001=439479156371`：
+脱敏案例 `YWLX001=<业务类型>`、`FJID001=<业务主键>`：
 
-- `KS069.OALS001=20-140-0000653193`
-- `OA001/OA003/OA010` 有效审批数据主要在旧流水 `20-140-0000653156`
-- 当前 `20-140-0000653193` 下审批关联为空，PC 函数返回空
-- 陈森源记录在旧流水下 `DBCL002=02`，但 `DBCL003/DBCL004` 为空，且缺 `OA010` 通过日志
-- `20-140-0000653193` 的生成规则来自 `P_XTGL_COMM_SH_INIT`：`substr(f_sysdate_l,0,2) || '-' || ywlx || '-' || lpad(seq_oa001_oals001.nextval,10,0)`
+- `KS069.OALS001=<当前流水>`
+- `OA001/OA003/OA010` 有效审批数据主要在旧流水 `<旧流水>`
+- 当前 `<当前流水>` 下审批关联为空，PC 函数返回空
+- `<处理人>` 记录在旧流水下 `DBCL002=02`，但 `DBCL003/DBCL004` 为空，且缺 `OA010` 通过日志
+- `<当前流水>` 的生成规则来自 `P_XTGL_COMM_SH_INIT`：`substr(f_sysdate_l,0,2) || '-' || ywlx || '-' || lpad(seq_oa001_oals001.nextval,10,0)`
 - 根因形态：重新提交/重置后业务表指向新流水，但审批流未完整落库；旧流水残留半成品审批痕迹

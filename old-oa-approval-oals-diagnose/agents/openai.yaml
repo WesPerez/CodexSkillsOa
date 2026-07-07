@@ -1,4 +1,0 @@
-interface:
-  display_name: "老 OA 审批流水诊断"
-  short_description: "排查老 OA 审批页空白、OALS 不一致、已处理计时异常等问题。"
-  default_prompt: "请诊断这条老 OA 审批数据的 OALS 流水、OA001/OA003/OA010 关联和审批页空白原因。"
